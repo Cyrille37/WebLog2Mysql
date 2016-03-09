@@ -68,8 +68,9 @@ function create_database($dbname,$user,$pw)
 
 function read_folder( $folder, PDO $pdo )
 {
-	$linesCount = 0 ;
 	$filesCount = 0 ;
+	$linesCount = 0 ;
+	$linesError = 0 ;
 	$dir = new \DirectoryIterator( $folder );
 	foreach( $dir as $fileinfo )
 	{
@@ -81,6 +82,7 @@ function read_folder( $folder, PDO $pdo )
 			$stats = read_folder( $folder.'/'.$fileinfo->getFilename(), $pdo );
 			$filesCount+=$stats['filesCount'];
 			$linesCount+=$stats['linesCount'];
+			$linesError+=$stats['linesError'];
 			continue ;
 		}
 		if( ! $fileinfo->isFile())
@@ -92,15 +94,17 @@ function read_folder( $folder, PDO $pdo )
 		$stats = read_log( $folder, $fileinfo->getFilename(), $pdo );
 		$filesCount ++ ;
 		$linesCount += $stats['linesCount'] ;
+		$linesError += $stats['linesError'] ;
 	}
 
-	return ['filesCount'=>$filesCount,'linesCount'=>$linesCount ];
+	return ['filesCount'=>$filesCount,'linesCount'=>$linesCount,'linesError'=>$linesError ];
 }
 
 function read_log( $folder, $filename, PDO $pdo)
 {
 	$fp = fopen( 'compress.zlib://'.$folder.'/'.$filename, 'rb' );
 	$linesCount = 0 ;
+	$linesError = 0 ;
 	$ips = [] ;
 	$pdo->beginTransaction();
 
@@ -110,6 +114,12 @@ function read_log( $folder, $filename, PDO $pdo)
 		try
 		{
 			$data = decode_log( $line );
+			if( $data == null )
+			{
+				$linesError ++ ;
+				echo 'ERROR: Unable to decode line ',$linesCount,' of file "',$filename.'"',"\n";
+				continue ;
+			}
 		}
 		catch( \Exception $ex )
 		{
@@ -129,7 +139,7 @@ function read_log( $folder, $filename, PDO $pdo)
 	$pdo->commit();
 	fclose( $fp );
 
-	return ['linesCount' => $linesCount, 'ips_count' => count($ips) ];
+	return ['linesCount' => $linesCount, 'ips_count' => count($ips), 'linesError' => $linesError ];
 }
 
 function decode_log( &$line )
@@ -173,5 +183,7 @@ function decode_log( &$line )
 			];
 		}
 
-		throw new Exception('Failed to decode line');
+		//throw new Exception('Failed to decode line');
+		return null ;
+
 }
